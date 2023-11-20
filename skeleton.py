@@ -32,8 +32,27 @@ class BinaryConnective:
     def __str__(self):
         return f"({self.left}{self.connective}{self.right})"
 
+class Predicate:
+    def __init__(self, predicate, left, right):
+        self.predicate = predicate
+        self.left = left
+        self.right = right
+
+    def __str__(self):
+        return f"{self.predicate}({self.left},{self.right})"
+
+class Quantifier:
+    def __init__(self, quantifier, variable, formula):
+        self.quantifier = quantifier
+        self.variable = variable
+        self.formula = formula
+
+    def __str__(self):
+        return f"{self.quantifier}{self.variable}{self.formula}"
 
 def parse_propositional_formula(fmla):
+    if (len(fmla) == 0):
+        return
     if (fmla[0] == '~'):
           return Negation(parse_propositional_formula(fmla[1:]))
     elif fmla[0] == '(' and fmla[-1] == ')':
@@ -53,7 +72,6 @@ def parse_propositional_formula(fmla):
     else:
         return Proposition(fmla)
 
-
 def check_if_valid_propositional_formula(fmla):
     #use the class names of each of the objects to check if the formula is valid
     if (fmla.__class__.__name__ == 'Proposition' and fmla.name in PROP_LETTERS):
@@ -66,20 +84,79 @@ def check_if_valid_propositional_formula(fmla):
         return False
 
 
-# Parse a formula, consult parseOutputs for return values.
+def parse_first_order_formula(fmla):
+    if (len(fmla) == 0):
+        return
+    if (fmla[0] == '~'):
+        return Negation(parse_first_order_formula(fmla[1:]))
+    elif fmla[0] in QUANTIFIERS:
+        return Quantifier(fmla[0], fmla[1], parse_first_order_formula(fmla[2:]))
+    elif fmla[0] in PREDICATES and fmla[1] == '(' and fmla[-1] == ')':
+        #find the first ',' in fmla:
+        index = fmla.find(',')
+        # print(fmla[2:index])
+        # print(fmla[index+1:-1])
+        return Predicate(fmla[0], parse_first_order_formula(fmla[2:index]), parse_first_order_formula(fmla[index+1:-1]))
+    elif fmla[0] == '(' and fmla[-1] == ')':
+        # Find the main connective
+        count = 0
+        for i in range(1, len(fmla) - 1):
+            if fmla[i] == '(':
+                count += 1
+            elif fmla[i] == ')':
+                count -= 1
+            elif count == 0 and fmla[i:i+2] in CONNECTIVES:
+                return BinaryConnective(
+                    parse_first_order_formula(fmla[1:i]),
+                    parse_first_order_formula(fmla[i+2:-1]),
+                    fmla[i:i+2]
+                )
+    else:
+        return Proposition(fmla)
+
+def check_if_valid_fol_formula(fmla):
+    if (fmla.__class__.__name__ == 'Proposition' and fmla.name in FOL_LETTERS):
+        return True
+    elif fmla.__class__.__name__ == 'Negation':
+        return check_if_valid_fol_formula(fmla.formula)
+    elif (fmla.__class__.__name__ == 'Quantifier' and fmla.quantifier in QUANTIFIERS and fmla.variable in FOL_LETTERS):
+        #TODO: need to add variable from quantifier to set of fol variables
+        return check_if_valid_fol_formula(fmla.formula)
+    elif fmla.__class__.__name__ == 'BinaryConnective' or fmla.__class__.__name__ == "Predicate":
+        return check_if_valid_fol_formula(fmla.left) and check_if_valid_fol_formula(fmla.right)
+    else:
+        return False
+      
+      
+# print(check_if_valid_propositional_formula(parse_propositional_formula("(q\/p)")))
+# print(check_if_valid_fol_formula(parse_first_order_formula("ExEy((Q(x,x)/\Q(y,y))\/)")))
+
 def parse(fmla):
     
-    # use parse_propositional_formula to parse propositional formulae and return corresponding number values from praseOutputs
-    ans = parse_propositional_formula(fmla)
-    if not check_if_valid_propositional_formula(ans):
-        return 0
-    if (ans.__class__.__name__ == 'Proposition'):
-        return 6
-    elif (ans.__class__.__name__ == 'Negation'):
-        return 7
-    elif (ans.__class__.__name__ == 'BinaryConnective'):
-        return 8
+    prop = parse_propositional_formula(fmla)
+    fol = parse_first_order_formula(fmla)
     
+    well_formed_prop = check_if_valid_propositional_formula(prop)
+    well_formed_fol = check_if_valid_fol_formula(fol)
+    
+    if (well_formed_prop):    
+        if (prop.__class__.__name__ == 'Proposition'):
+            return 6
+        elif (prop.__class__.__name__ == 'Negation'):
+            return 7
+        elif (prop.__class__.__name__ == 'BinaryConnective'):
+            return 8
+    elif (well_formed_fol):
+        if (fol.__class__.__name__ == 'Predicate'):
+            return 1
+        elif (fol.__class__.__name__ == 'Negation'):
+            return 2
+        elif (fol.__class__.__name__ == 'Quantifier' and fol.quantifier == 'A'):
+            return 3
+        elif (fol.__class__.__name__ == 'Quantifier' and fol.quantifier == 'E'):
+            return 4
+        elif (fol.__class__.__name__ == 'BinaryConnective'):
+            return 5
     return 0
       
 # print(parse_propositional_formula('(p\\/(r\\/s))'))
@@ -171,11 +248,11 @@ def check_number_of_letters(fmla):
 def theory(fmla):
   return parse_propositional_formula(fmla)
   
-
+  
 def sat(tableau):
-    if (check_number_of_letters(tableau[0]) > MAX_CONSTANTS):
-        #too long
-        return 2
+    # if (check_number_of_letters(tableau[0]) > MAX_CONSTANTS):
+    #     #too long
+    #     return 2
     
     branches = [tableau]
     while len(branches) > 0:
@@ -183,13 +260,13 @@ def sat(tableau):
         # for node in branches:
         #     [print("node: ", n) for n in node]
         #     print("\n")
-
-        branch = branches.pop()
-
         # [print("b: ", b) for b in branch]
         # print("leaf branch: ", is_leaf_branch(branch))
         # print("branch closed: ", is_closed(branch))
         
+
+        branch = branches.pop()
+
         if is_closed(branch):
             #get rid of all sub branches of this branch from branches
             continue
@@ -199,15 +276,10 @@ def sat(tableau):
         else:
             sub_branches = []
             for node in branch:
-                
                 expansion = expand_node(node)
-                #no expansion
-                
                 #alpha expansion (p/\q, ~(p\/q), ~(p=>q))
                 if type(expansion) is not tuple:
-                    # print all nodes in expansion
                     # [print("e: ", e) for e in expansion]
-                    # branch = [n for n in branch if n != node] + expansion
                     if len(sub_branches) > 0:
                         for i in range(len(sub_branches)):
                           sub_branches[i] += expansion
@@ -217,7 +289,6 @@ def sat(tableau):
                 #beta expansion (p\/q, ~(p/\q), (p=>q))
                 else:
                     # [print("tup e: ", e[0]) for e in expansion]
-                    
                     # if there was a previous alpha expansion, remove it and combine with new expansion
                     if (len(sub_branches) == 1):
                         temp = sub_branches.pop()
@@ -233,8 +304,7 @@ def sat(tableau):
                     
                     # print("added from beta:" , expansion[0][0])
                     # print("added from beta:" , expansion[1][0])
-
-                    
+   
             branches += sub_branches
             # count =0
             # print(sub_branches)
